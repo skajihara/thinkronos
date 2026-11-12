@@ -1,4 +1,4 @@
-name: 技術的負債
+name: Tech debt
 description: リファクタリングや設計の見直し
 title: "[refactor] "
 labels: ["type: refactor"]
