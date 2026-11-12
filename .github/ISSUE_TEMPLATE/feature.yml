@@ -1,0 +1,76 @@
+name: 機能
+description: 新しい機能や改善
+title: "[feat] "
+labels: ["type: feat"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        1つのIssueは1つのPRに収まる大きさにする。大きい場合はサブIssueに分ける。
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景・目的
+      description: なぜこの機能が必要か
+    validations:
+      required: true
+  - type: textarea
+    id: requirement
+    attributes:
+      label: やりたいこと
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受け入れ条件
+      description: 完了を判定できる条件を箇条書きで書く
+      value: |
+        - [ ] 
+        - [ ] 
+    validations:
+      required: true
+  - type: input
+    id: requirement-ids
+    attributes:
+      label: 関連する要件ID
+      placeholder: 例：MM-03, AI-01
+  - type: dropdown
+    id: area
+    attributes:
+      label: 領域
+      multiple: true
+      options:
+        - backend
+        - frontend
+        - infra
+        - ai
+        - integration
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 優先度
+      options:
+        - Must
+        - Should
+        - Could
+    validations:
+      required: true
+  - type: dropdown
+    id: spec
+    attributes:
+      label: 仕様の作り方
+      options:
+        - Kiroで仕様を作る（大きな機能）
+        - 設計メモで十分
+        - 不要（小さな修正）
+    validations:
+      required: true
+  - type: checkboxes
+    id: ready
+    attributes:
+      label: 着手できる条件（Definition of Ready）
+      options:
+        - label: 受け入れ条件が書かれている
+        - label: 必要な仕様がある（または不要と判断した）
+        - label: 1つのPRに収まる大きさになっている
