@@ -1,4 +1,4 @@
-name: 機能
+name: Feature
 description: 新しい機能や改善
 title: "[feat] "
 labels: ["type: feat"]
