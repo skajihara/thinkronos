@@ -1,0 +1,38 @@
+name: 技術的負債
+description: リファクタリングや設計の見直し
+title: "[refactor] "
+labels: ["type: refactor"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 現状の問題
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 放置した場合の影響
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 改善案
+    validations:
+      required: true
+  - type: input
+    id: adr
+    attributes:
+      label: 関連するADR
+      placeholder: 例：ADR 0002
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 優先度
+      options:
+        - Must
+        - Should
+        - Could
+    validations:
+      required: true
