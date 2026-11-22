@@ -9,7 +9,7 @@ import sys
 
 PROTECTED = {"main", "develop"}
 WRITE_CMD = re.compile(r"\bgit\b(?:\s+-\S+(?:\s+\S+)?)*\s+(commit|push|merge)\b")
-PUSH_TO_PROTECTED = re.compile(r"\bgit\s+push\b[^;&|]*[\s:](main|develop)\b")
+PUSH_TO_PROTECTED = re.compile(r"\bgit\s+push\b[^;&|\n]*[\s:](main|develop)\b")
 
 
 def current_branch(cwd):
