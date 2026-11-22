@@ -22,7 +22,7 @@ CIで PRタイトル（`pr-title`）、PR内の全コミット（`commitlint`）
 | チェック | 内容 |
 |---|---|
 | `ci-gate` | `ci.yml` の全ジョブの結果（lint、型、テスト、変更行カバレッジ80%、層の依存、openapi.json の差分、ビルド）。スキップは通し、失敗・取り消しは落とす |
-| `security-scan` | 依存ライブラリ・Dockerfile の脆弱性（HIGH以上で失敗）。週1回も実行 |
+| `security-scan` | 依存ライブラリの脆弱性（HIGH以上で失敗）。週1回も実行 |
 | `pr-title` / `branch-policy` / `commitlint` | 上のとおり |
 
 - `backend/`・`frontend/` が無いうちは、該当ジョブはスキップされる。
