@@ -26,8 +26,8 @@ body:
       label: 受け入れ条件
       description: 完了を判定できる条件を箇条書きで書く
       value: |
-        - [ ] 
-        - [ ] 
+        - [ ]
+        - [ ]
     validations:
       required: true
   - type: input
