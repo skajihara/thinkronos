@@ -5,12 +5,19 @@ x-stub: &stub
   depends_on:
     postgres: {condition: service_healthy}
     redis: {condition: service_healthy}
+    lgtm: {condition: service_healthy}
   healthcheck:
     test: ["CMD", "python", "healthcheck.py"]
     interval: 5s
     timeout: 3s
     retries: 10
   restart: unless-stopped
+
+x-otel: &otel
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_METRIC_EXPORT_INTERVAL: "10000"
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=local
 
 services:
   postgres:
@@ -51,20 +58,40 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # 監視（ログ・メトリクス・トレース）。匿名で Admin になるため 127.0.0.1 にだけ公開する（docs/observability.md）
+  lgtm:
+    image: grafana/otel-lgtm:0.41.1
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+      - "127.0.0.1:${OTLP_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${OTLP_HTTP_PORT:-4318}:4318"
+    volumes: [lgtmdata:/data]
+    mem_limit: 3g
+    environment: {LGTM_SHUTDOWN_TIMEOUT_SECONDS: "30"}
+    stop_grace_period: 40s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
   api:
     <<: *stub
-    environment: {SERVICE_NAME: api, PORT: "8000"}
+    environment: {<<: *otel, OTEL_SERVICE_NAME: api, SERVICE_NAME: api, PORT: "8000"}
     ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
 
   worker:
     <<: *stub
-    environment: {SERVICE_NAME: worker, PORT: "8000"}
+    environment: {<<: *otel, OTEL_SERVICE_NAME: worker, SERVICE_NAME: worker, PORT: "8000"}
 
   scheduler:
     <<: *stub
-    environment: {SERVICE_NAME: scheduler, PORT: "8000"}
+    environment: {<<: *otel, OTEL_SERVICE_NAME: scheduler, SERVICE_NAME: scheduler, PORT: "8000"}
 
 volumes:
   pgdata:
   redisdata:
   ollama:
+  lgtmdata:
