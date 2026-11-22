@@ -10,10 +10,10 @@ PRタイトルはConventional Commitsの形式にする（例：feat(map): ノ�
 Closes #
 
 ## 変更内容
-- 
+-
 
 ## 動作確認の方法
-1. 
+1.
 
 ## スクリーンショット（UIを変更した場合）
 

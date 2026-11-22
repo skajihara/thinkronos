@@ -14,8 +14,8 @@ body:
     attributes:
       label: 再現手順
       value: |
-        1. 
-        2. 
+        1.
+        2.
     validations:
       required: true
   - type: textarea
