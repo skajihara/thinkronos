@@ -27,5 +27,6 @@
 | [0012](0012-map-rendering.md) | マインドマップの描画方式（Hybrid） | 承認済み（2026-11-23） |
 | [0031](0031-calendar-library.md) | カレンダーのライブラリ（FullCalendar v7） | 承認済み（2026-11-23） |
 | [0032](0032-local-llm-and-embedding.md) | ローカルLLMと埋め込みモデル（qwen3:8b ＋ bge-m3） | 承認済み（2026-11-23） |
+| [0033](0033-postgresql-major-version.md) | PostgreSQLのメジャーバージョン（18） | 承認済み（2026-11-23） |
 
 上記以外の番号は、このPRの時点ではまだ書かれていない。
