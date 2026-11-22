@@ -1,0 +1,159 @@
+# PRごとの品質検査（Issue #10、ADR 0034）。
+# アプリのコード（backend/、frontend/）が入るまでは、該当ジョブはスキップされる。
+# スキップは job の if で行う。ワークフロー全体の paths: フィルタは使わない
+# （必須チェックが Pending のまま止まるため）。
+# 必須チェックにするのは ci-gate だけ。ジョブを増減してもルールセットは変えない。
+name: ci
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: detect
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.d.outputs.backend }}
+      frontend: ${{ steps.d.outputs.frontend }}
+      backend_image: ${{ steps.d.outputs.backend_image }}
+      frontend_image: ${{ steps.d.outputs.frontend_image }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: d
+        run: |
+          flag() { if [ -e "$2" ]; then echo "$1=true" >> "$GITHUB_OUTPUT"; else echo "$1=false" >> "$GITHUB_OUTPUT"; fi; }
+          flag backend backend/pyproject.toml
+          flag frontend frontend/package.json
+          flag backend_image backend/Dockerfile
+          flag frontend_image frontend/Dockerfile
+
+  backend:
+    name: backend
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # diff-cover が基準ブランチとの差分を取るため
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Type check
+        run: uv run mypy .
+      - name: Import layers
+        run: uv run lint-imports --config ../.importlinter
+      - name: Build Postgres image (Testcontainers が使う)
+        working-directory: .
+        run: docker build -t thinkronos/postgres:18 docker/postgres
+      - name: Unit and integration tests
+        run: uv run pytest --cov --cov-report=xml
+      - name: Coverage of changed lines (>= 80%)
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: uv run diff-cover coverage.xml --compare-branch="$BASE" --fail-under=80
+
+  openapi:
+    name: openapi
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+        working-directory: backend
+      # make gen-openapi と openapi.json（リポジトリ直下）は、バックエンドの土台のIssueで作る。
+      # 無いうちはここで失敗して気づける（空の成功にはしない）。
+      - name: Regenerate openapi.json
+        run: make gen-openapi
+      - name: Fail on diff (C-28)
+        run: git diff --exit-code -- openapi.json
+
+  frontend:
+    name: frontend
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  docker-build:
+    name: docker-build
+    needs: detect
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: postgres (docker/postgres)
+        uses: docker/build-push-action@v7
+        with:
+          context: docker/postgres
+          push: false
+          cache-from: type=gha,scope=postgres
+          cache-to: type=gha,scope=postgres,mode=max
+      - name: backend
+        if: needs.detect.outputs.backend_image == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+      - name: frontend
+        if: needs.detect.outputs.frontend_image == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+  # P1で最初のE2Eができたら、ここに e2e-smoke ジョブ（compose起動 → Playwright）を足し、
+  # ci-gate の needs に加える（I-07）。今は入れない。
+
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [detect, backend, openapi, frontend, docker-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # success と skipped は通す。failure と cancelled は落とす。
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1;; esac

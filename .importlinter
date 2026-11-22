@@ -1,0 +1,29 @@
+# ポート＆アダプターの層の依存の向き（ADR 0034）。
+# パッケージ名と配置は、バックエンドの土台のIssueで確定する。確定したら root_package と
+# 各 layers を合わせ、違反するimportでCIが落ちることを確かめる。
+# backend/ が無いうちは CI の backend ジョブごとスキップされる。
+[importlinter]
+root_package = thinkronos
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = adapters -> application -> domain
+type = layers
+layers =
+    thinkronos.adapters
+    thinkronos.application
+    thinkronos.domain
+
+[importlinter:contract:domain-no-frameworks]
+name = domain と application はフレームワークを import しない
+type = forbidden
+source_modules =
+    thinkronos.domain
+    thinkronos.application
+forbidden_modules =
+    thinkronos.adapters
+    fastapi
+    starlette
+    sqlalchemy
+    psycopg
+    httpx

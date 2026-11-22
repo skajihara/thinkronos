@@ -1,0 +1,29 @@
+# 週1回。コミットは chore(deps): ...（commitlint の scope に deps がある）。
+# backend/・frontend/ が入るまでは、そのディレクトリの更新は Dependabot 側でエラーになる
+# （Insights > Dependency graph > Dependabot に出る）。入れば動く。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: chore, include: scope }
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly }
+    commit-message: { prefix: chore, include: scope }
+  - package-ecosystem: uv
+    directory: /backend
+    schedule: { interval: weekly }
+    commit-message: { prefix: chore, include: scope }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: ci, include: scope }
+  - package-ecosystem: docker
+    directories: [/docker/postgres, /docker/stub, /backend, /frontend]
+    schedule: { interval: weekly }
+    commit-message: { prefix: chore, include: scope }
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: chore, include: scope }
