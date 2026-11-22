@@ -1,0 +1,34 @@
+name: branch-policy
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  branch-policy:
+    name: branch-policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch names
+        env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -u
+          ver='v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?'
+          slug='[0-9]+-[a-z0-9]+(-[a-z0-9]+)*'
+          fail() { echo "::error::$1"; exit 1; }
+          if   [[ "$HEAD" =~ ^feature/$slug$ ]]; then kind=feature
+          elif [[ "$HEAD" =~ ^spike/$slug$ ]];   then kind=spike
+          elif [[ "$HEAD" =~ ^release/$ver$ ]];  then kind=release
+          elif [[ "$HEAD" =~ ^hotfix/$ver$ ]];   then kind=hotfix
+          elif [[ "$HEAD" == develop ]];         then kind=develop
+          else fail "Invalid head branch name: $HEAD (feature/<issue>-<slug>, spike/<issue>-<slug>, release/<ver>, hotfix/<ver>)"; fi
+          case "$BASE" in
+            main)
+              [[ $kind == release || $kind == hotfix ]] || fail "Only release/* or hotfix/* may be merged into main (ADR 0013). head=$HEAD" ;;
+            develop)
+              [[ $kind == feature || $kind == release || $kind == hotfix ]] || fail "$HEAD cannot be merged into develop (spike/* is never merged). head=$HEAD" ;;
+            *) fail "Unsupported base branch: $BASE" ;;
+          esac
+          echo "OK: $HEAD -> $BASE"
