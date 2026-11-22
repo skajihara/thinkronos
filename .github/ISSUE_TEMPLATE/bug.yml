@@ -1,4 +1,4 @@
-name: バグ
+name: Bug
 description: 想定どおりに動かない不具合
 title: "[bug] "
 labels: ["type: fix"]
