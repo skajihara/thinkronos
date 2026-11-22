@@ -1,0 +1,70 @@
+name: thinkronos
+
+x-stub: &stub
+  build: ./docker/stub
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+  healthcheck:
+    test: ["CMD", "python", "healthcheck.py"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: thinkronos/postgres:18
+    build: ./docker/postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?.env を作る（.env.example 参照）}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env を作る}
+      POSTGRES_DB: ${POSTGRES_DB:-thinkronos}
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    volumes: [pgdata:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["127.0.0.1:${OLLAMA_PORT:-11435}:11434"]
+    volumes: [ollama:/root/.ollama]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    <<: *stub
+    environment: {SERVICE_NAME: api, PORT: "8000"}
+    ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
+
+  worker:
+    <<: *stub
+    environment: {SERVICE_NAME: worker, PORT: "8000"}
+
+  scheduler:
+    <<: *stub
+    environment: {SERVICE_NAME: scheduler, PORT: "8000"}
+
+volumes:
+  pgdata:
+  redisdata:
+  ollama:

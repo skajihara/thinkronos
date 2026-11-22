@@ -1,0 +1,10 @@
+# Ollama に NVIDIA GPU を割り当てる。GPU が無い環境では重ねない（make up-cpu）
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
