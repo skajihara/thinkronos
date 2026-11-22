@@ -16,6 +16,19 @@ Conventional Commits：`type(scope): subject`。件名は日本語可。
 
 CIで PRタイトル（`pr-title`）、PR内の全コミット（`commitlint`）、ブランチ名（`branch-policy`）を検査する。
 
+## CI（ADR 0034）
+`develop` へのマージに必須のチェックは次の5つ。
+
+| チェック | 内容 |
+|---|---|
+| `ci-gate` | `ci.yml` の全ジョブの結果（lint、型、テスト、変更行カバレッジ80%、層の依存、openapi.json の差分、ビルド）。スキップは通し、失敗・取り消しは落とす |
+| `security-scan` | 依存ライブラリ・Dockerfile の脆弱性（HIGH以上で失敗）。週1回も実行 |
+| `pr-title` / `branch-policy` / `commitlint` | 上のとおり |
+
+- `backend/`・`frontend/` が無いうちは、該当ジョブはスキップされる。
+- ジョブを足すときは `ci-gate` の `needs` に加える（ルールセットは変えない）。
+- Dependabot は週1回、`chore(deps): ...` のPRを作る。
+
 ## 初回セットアップ（Windows、PowerShell）
 1. GNU Make：`winget install ezwinports.make`（入れたら PowerShell を開き直す）
 2. pre-commit：`uv tool install pre-commit`

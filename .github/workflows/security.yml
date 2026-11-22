@@ -1,0 +1,31 @@
+# 依存ライブラリ・Dockerfile の脆弱性検査（Issue #10、ADR 0034）。
+# High 以上で失敗する。PRごとと、週1回（新しく見つかった脆弱性を拾う）。
+# 誤検知・対処できないものは .trivyignore に理由つきで書く。
+name: security
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: "0 21 * * 0" # 毎週月曜 6:00 JST
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-scan:
+    name: security-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Trivy (uv.lock, package-lock.json, Dockerfile)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
