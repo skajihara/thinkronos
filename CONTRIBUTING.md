@@ -45,7 +45,20 @@ Makefile は bash に依存しない書き方にしてあるので、PowerShell 
 | `make up-cpu` | GPU が無い環境で起動する |
 | `make down` | 止める（データは残る。消すときは `docker compose down -v`） |
 | `make pull-models` | Ollama のモデル（qwen3:8b、bge-m3）を取得する。初回だけ、約6 GB |
+| `make grafana` | Grafana のURLを表示する（ログ・メトリクス・トレース） |
 | `make setup` / `make lint` | git hooks を入れる／pre-commit を全ファイルに実行する |
 | `make test` / `migrate` / `gen-types` | 未実装 |
 
-ポートは `127.0.0.1` だけに公開する（Postgres 5432、Redis 6379、Ollama 11435、api 8000）。PC に Ollama を直接入れていても 11434 と被らない。
+ポートは `127.0.0.1` だけに公開する（Postgres 5432、Redis 6379、Ollama 11435、api 8000、Grafana 3000、OTLP 4317/4318）。PC に Ollama を直接入れていても 11434 と被らない。
+
+## 監視（Grafana）
+`make up` の後、`make grafana` で表示される `http://127.0.0.1:3000` を開く（ログイン不要。匿名で Admin になるので、外部には公開しない）。左メニューの **Explore** で、上部のデータソースを切り替えて見る。
+| 見たいもの | データソース | 例 |
+|---|---|---|
+| トレース | Tempo | Search で Service Name に `api` を選ぶ |
+| ログ | Loki | `{service_name="api"} \| request_id="…"` |
+| メトリクス | Prometheus | `http_server_requests_total` |
+
+- ログの `trace_id` から、対応するトレースへ移れる。
+- ログとメトリクスは `lgtmdata` ボリュームに残る（トレースは再起動で消えることがある）。消すときは `docker compose down -v`。
+- 設計は `docs/observability.md`。
