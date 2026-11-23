@@ -1,7 +1,7 @@
 # シェルに依存しない書き方にする（PowerShell から GNU Make を呼んでも動くように）。
 # レシピは単純なコマンド1行だけにし、grep/awk などの外部コマンドや bash 構文を使わない。
 .DEFAULT_GOAL := help
-.PHONY: help setup up up-cpu down pull-models grafana test lint migrate gen-types
+.PHONY: help setup up up-cpu down pull-models grafana test lint migrate seed gen-openapi agent-smoke gen-types
 
 COMPOSE_GPU = docker compose -f compose.yaml -f compose.gpu.yaml
 
@@ -14,7 +14,12 @@ help: ## 一覧を表示する
 	$(info make pull-models  Ollama のモデルを取得する（qwen3:8b、bge-m3）)
 	$(info make grafana      Grafana（ログ・メトリクス・トレース）のURLを表示する)
 	$(info make lint         pre-commit を全ファイルに実行する)
-	$(info make test / migrate / gen-types  未実装（後続のIssueで実装）)
+	$(info make test         バックエンドのテスト（Docker が必要。Testcontainers を使う）)
+	$(info make migrate      DBマイグレーションを実行する（make up の後）)
+	$(info make seed         デモ用のシードを入れる（make up の後）)
+	$(info make gen-openapi  openapi.json を作り直す)
+	$(info make agent-smoke  エージェント（Ollama）で子ノードを提案させる（make up と make pull-models の後）)
+	$(info make gen-types    未実装（フロントの土台のIssueで実装）)
 	@echo (make 名前 で実行する)
 
 setup: ## git hooks を入れる
@@ -34,14 +39,23 @@ pull-models: ## Ollama のモデルを取得する
 	docker compose exec ollama ollama pull qwen3:8b
 	docker compose exec ollama ollama pull bge-m3
 
-test: ## テスト（未実装）
-	@echo test: not implemented yet
+test: ## バックエンドのテスト
+	uv run --directory backend pytest
 
 lint: ## pre-commit を全ファイルに実行する
 	pre-commit run --all-files
 
-migrate: ## DBマイグレーション（未実装）
-	@echo migrate: not implemented yet
+migrate: ## DBマイグレーション（所有者のロールで実行する）
+	docker compose run --rm migrate
+
+seed: ## デモ用のシードを入れる（何度実行してもよい）
+	docker compose exec api python -m thinkronos.cli seed
+
+gen-openapi: ## openapi.json（リポジトリ直下）を作り直す（C-28）
+	uv run --directory backend python -m thinkronos.api.openapi ../openapi.json
+
+agent-smoke: ## エージェントで子ノードを提案させる
+	docker compose exec api python -m thinkronos.cli suggest
 
 gen-types: ## API型の生成（未実装）
 	@echo gen-types: not implemented yet

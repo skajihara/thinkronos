@@ -38,7 +38,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20 # Postgres のイメージ（pg_bigm のビルド）と結合テストを含む
     defaults:
       run:
         working-directory: backend
@@ -55,7 +55,7 @@ jobs:
       - name: Type check
         run: uv run mypy .
       - name: Import layers
-        run: uv run lint-imports --config ../.importlinter
+        run: uv run lint-imports ../.importlinter
       - name: Build Postgres image (Testcontainers が使う)
         working-directory: .
         run: docker build -t thinkronos/postgres:18 docker/postgres
@@ -79,8 +79,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
         working-directory: backend
-      # make gen-openapi と openapi.json（リポジトリ直下）は、バックエンドの土台のIssueで作る。
-      # 無いうちはここで失敗して気づける（空の成功にはしない）。
+      # openapi.json（リポジトリ直下）は make gen-openapi で作り、コミットする（Issue #13）
       - name: Regenerate openapi.json
         run: make gen-openapi
       - name: Fail on diff (C-28)

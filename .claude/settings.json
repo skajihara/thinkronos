@@ -20,7 +20,7 @@
       "Bash(git push origin main *)",
       "Bash(git push origin develop *)",
       "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(./.env.local)"
     ]
   },
   "hooks": {
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project python .claude/hooks/block_protected_branch.py"
+            "command": "uv run --no-project python \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_protected_branch.py\""
           }
         ]
       }
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-project python .claude/hooks/format_on_save.py"
+            "command": "uv run --no-project python \"$CLAUDE_PROJECT_DIR/.claude/hooks/format_on_save.py\""
           }
         ]
       }

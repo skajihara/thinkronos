@@ -1,29 +1,144 @@
-# ポート＆アダプターの層の依存の向き（ADR 0034）。
-# パッケージ名と配置は、バックエンドの土台のIssueで確定する。確定したら root_package と
-# 各 layers を合わせ、違反するimportでCIが落ちることを確かめる。
-# backend/ が無いうちは CI の backend ジョブごとスキップされる。
+# 層の依存の向き（実装規約 3.1、ADR 0034・0035）。CI の backend ジョブの「Import layers」で検査する。
+# 組み立て場所は thinkronos.bootstrap だけ（すべての層を import してよい）。
+# thinkronos.cli は手元で使うコマンドで、bootstrap と application だけを使う。
+# mcp は今は無い（作るときは「自分のAPIクライアントと設定だけ」の契約を足す。C-22）。
 [importlinter]
 root_package = thinkronos
 include_external_packages = True
 
-[importlinter:contract:layers]
-name = adapters -> application -> domain
-type = layers
-layers =
-    thinkronos.adapters
-    thinkronos.application
-    thinkronos.domain
-
-[importlinter:contract:domain-no-frameworks]
-name = domain と application はフレームワークを import しない
+[importlinter:contract:domain]
+name = domain は標準ライブラリと domain だけを import する
 type = forbidden
 source_modules =
     thinkronos.domain
+forbidden_modules =
+    thinkronos.ports
+    thinkronos.application
+    thinkronos.adapters
+    thinkronos.api
+    thinkronos.worker
+    thinkronos.bootstrap
+    thinkronos.cli
+    alembic
+    asyncpg
+    celery
+    fastapi
+    httpx
+    kombu
+    ollama
+    opentelemetry
+    pydantic
+    pydantic_settings
+    redis
+    sqlalchemy
+    starlette
+    strands
+    uvicorn
+
+[importlinter:contract:ports]
+name = ports は domain だけを import する
+type = forbidden
+source_modules =
+    thinkronos.ports
+forbidden_modules =
+    thinkronos.application
+    thinkronos.adapters
+    thinkronos.api
+    thinkronos.worker
+    thinkronos.bootstrap
+    thinkronos.cli
+    alembic
+    asyncpg
+    celery
+    fastapi
+    httpx
+    kombu
+    ollama
+    opentelemetry
+    pydantic
+    pydantic_settings
+    redis
+    sqlalchemy
+    starlette
+    strands
+    uvicorn
+
+[importlinter:contract:application]
+name = application は domain と ports だけを import する
+type = forbidden
+source_modules =
     thinkronos.application
 forbidden_modules =
     thinkronos.adapters
+    thinkronos.api
+    thinkronos.worker
+    thinkronos.bootstrap
+    thinkronos.cli
+    alembic
+    asyncpg
+    celery
     fastapi
-    starlette
-    sqlalchemy
-    psycopg
     httpx
+    kombu
+    ollama
+    opentelemetry
+    pydantic
+    pydantic_settings
+    redis
+    sqlalchemy
+    starlette
+    strands
+    uvicorn
+
+[importlinter:contract:adapters]
+name = adapters は ports・domain・外部のライブラリだけを import する
+type = forbidden
+source_modules =
+    thinkronos.adapters
+forbidden_modules =
+    thinkronos.application
+    thinkronos.api
+    thinkronos.worker
+    thinkronos.bootstrap
+    thinkronos.cli
+
+# api・worker・cli は application を経由して domain・ports に間接的に届くので、直接の import だけを禁じる
+[importlinter:contract:api]
+name = api は application と自分のスキーマだけを import する
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    thinkronos.api
+forbidden_modules =
+    thinkronos.domain
+    thinkronos.ports
+    thinkronos.adapters
+    thinkronos.worker
+    thinkronos.bootstrap
+    thinkronos.cli
+
+[importlinter:contract:worker]
+name = worker は application だけを import する
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    thinkronos.worker
+forbidden_modules =
+    thinkronos.domain
+    thinkronos.ports
+    thinkronos.adapters
+    thinkronos.api
+    thinkronos.bootstrap
+    thinkronos.cli
+
+[importlinter:contract:cli]
+name = cli は bootstrap と application だけを import する
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    thinkronos.cli
+forbidden_modules =
+    thinkronos.domain
+    thinkronos.ports
+    thinkronos.adapters
+    thinkronos.api
