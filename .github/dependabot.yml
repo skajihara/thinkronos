@@ -1,4 +1,5 @@
-# 週1回。コミットは chore(deps): ...（commitlint の scope に deps がある）。
+# 週1回。コミットは chore(deps): ... か chore(deps-dev): ...（どちらも commitlint の scope にある）。
+# ブランチ名 dependabot/* は branch-policy で develop へのマージを許可している。
 # backend/・frontend/ が入るまでは、そのディレクトリの更新は Dependabot 側でエラーになる
 # （Insights > Dependency graph > Dependabot に出る）。入れば動く。
 version: 2
@@ -7,6 +8,8 @@ updates:
     directory: /
     schedule: { interval: weekly }
     commit-message: { prefix: chore, include: scope }
+    groups:
+      commitlint: { patterns: ["@commitlint/*"] }
   - package-ecosystem: npm
     directory: /frontend
     schedule: { interval: weekly }

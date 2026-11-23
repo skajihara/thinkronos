@@ -23,12 +23,13 @@ jobs:
           elif [[ "$HEAD" =~ ^release/$ver$ ]];  then kind=release
           elif [[ "$HEAD" =~ ^hotfix/$ver$ ]];   then kind=hotfix
           elif [[ "$HEAD" == develop ]];         then kind=develop
-          else fail "Invalid head branch name: $HEAD (feature/<issue>-<slug>, spike/<issue>-<slug>, release/<ver>, hotfix/<ver>)"; fi
+          elif [[ "$HEAD" =~ ^dependabot/ ]];    then kind=dependabot
+          else fail "Invalid head branch name: $HEAD (feature/<issue>-<slug>, spike/<issue>-<slug>, release/<ver>, hotfix/<ver>, dependabot/*)"; fi
           case "$BASE" in
             main)
               [[ $kind == release || $kind == hotfix ]] || fail "Only release/* or hotfix/* may be merged into main (ADR 0013). head=$HEAD" ;;
             develop)
-              [[ $kind == feature || $kind == release || $kind == hotfix ]] || fail "$HEAD cannot be merged into develop (spike/* is never merged). head=$HEAD" ;;
+              [[ $kind == feature || $kind == release || $kind == hotfix || $kind == dependabot ]] || fail "$HEAD cannot be merged into develop (spike/* is never merged). head=$HEAD" ;;
             *) fail "Unsupported base branch: $BASE" ;;
           esac
           echo "OK: $HEAD -> $BASE"
