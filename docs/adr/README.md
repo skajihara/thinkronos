@@ -31,6 +31,7 @@
 | [0033](0033-postgresql-major-version.md) | PostgreSQLのメジャーバージョン（18） | 承認済み（2026-11-23） |
 | [0034](0034-ci.md) | CIの構成（uv、diff-cover、Trivy、ci-gate） | 承認済み（2026-11-23） |
 | [0035](0035-backend-foundation.md) | バックエンドの土台（Python 3.13、層、Alembic、factory_boy、RLS） | 承認済み（2026-11-23） |
+| [0036](0036-frontend-foundation.md) | フロントエンドの土台（shadcn/ui＋Base UI、TanStack Query＋Zustand、openapi-fetch） | 承認済み（2026-11-23） |
 
 ## 予約済みの番号
 
@@ -67,4 +68,4 @@
 | 0029 | AIツールへの指示とKiroの使い方 |
 | 0030 | ワークスペースの文脈とRLS |
 
-新しい論点は 0036 から番号を振る。
+新しい論点は 0037 から番号を振る。

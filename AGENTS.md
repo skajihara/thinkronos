@@ -13,12 +13,13 @@ Thinkronos：マインドマップをAIがカレンダーの時間ブロック�
 | `docs/conventions/` | 実装規約。実装はここに従う |
 | `docs/adr/` | 設計判断（ADR）。予約済みの番号は `docs/adr/README.md` |
 | `backend/` | API・ワーカー（Python 3.13、uv）。層は ADR 0035 と `.importlinter` |
+| `frontend/` | 画面（React、Vite、TypeScript）。構成は ADR 0036 と実装規約 3.3 |
 | `docker/`、`compose*.yaml` | ローカル環境（Postgres、Redis、Ollama、監視） |
 | `spike/` | 試作。`develop` にはマージしない |
 | `.github/` | CI、Issue・PRのテンプレート |
 
 ## 共通コマンド
-`make help` で一覧を表示する。主なもの：`make setup`（git hooks）、`make up` / `make up-cpu` / `make down`、`make lint`、`make test`、`make migrate`、`make gen-openapi`。`make gen-types` は未実装。
+`make help` で一覧を表示する。主なもの：`make setup`（git hooks）、`make up` / `make up-cpu` / `make down`、`make lint`、`make test`、`make migrate`、`make gen-openapi`、`make gen-types`、`make web`。
 Windows（PowerShell）から実行できる。詳細は `CONTRIBUTING.md`。
 
 ## ブランチ・コミット・PR
