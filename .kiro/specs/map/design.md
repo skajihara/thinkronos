@@ -42,10 +42,14 @@ graph TD
 | `CreateMapUseCase` | `CreateMapCommand(actor, title)` | `CreateMapResult(map_id)` |
 | `ListMapsUseCase` | `ListMapsCommand(actor, cursor, limit)` | `ListMapsResult(items, next_cursor)` |
 | `GetMapUseCase` | `GetMapCommand(actor, map_id)` | `GetMapResult(mindmap, nodes, node_links)` |
-| `UpdateMapUseCase` | `UpdateMapCommand(actor, map_id, title?, deleted_at?)` | `UpdateMapResult(map)` |
+| `UpdateMapUseCase` | `UpdateMapCommand(actor, map_id, title)` | `UpdateMapResult(map)` |
 | `DeleteMapUseCase` | `DeleteMapCommand(actor, map_id)` | `DeleteMapResult()` |
 | `ApplyOperationsUseCase` | `ApplyOperationsCommand(actor, map_id, base_seq, operations, batch_id, client_id, origin, intent?)` | `ApplyOperationsResult(seq, operations_after)` |
 | `GetOperationsAfterUseCase` | `GetOperationsAfterCommand(actor, map_id, after_seq)` | `GetOperationsAfterResult(operations)` |
+
+`UpdateMapUseCase` は `title` の変更のみを受け付ける。論理削除は `DeleteMapUseCase` で行い、`mindmaps.deleted_at` を設定する。
+
+`CreateMapUseCase` は、マップと中心のトピック（root_node）を**同じトランザクション内**で作成する。`mindmaps.root_node_id` → `nodes(map_id, id)` の外部キーは DEFERRABLE INITIALLY DEFERRED として定義し、コミット時に整合性を確認する（`docs/requirements/05a-tables.md` の制約定義に準拠）。
 
 ### ApplyOperationsUseCase の処理フロー
 
@@ -84,15 +88,17 @@ sequenceDiagram
 - 前回の操作から30分以上経過している、または
 - 前回のスナップショットから200操作以上経過している
 
+サーバーは各操作の `inversePayload` を組み立ててレスポンスに含める（後述「Undo / Redo の設計」参照）。
+
 ### 操作ログの適用
 
 op_type と payload / inverse_payload の対応（詳細は `docs/requirements/05a-tables.md` の「操作ログの仕様」節に従う）：
 
 | op_type | payload の主な内容 | inverse_payload | 409 拒否条件 |
 |---|---|---|---|
-| `create_node` | 新ノードの全項目（id, parent_id, sort_key, text, note, style, collapsed, is_floating, position_x, position_y） | 作成したノードの id | 親が存在しない・削除済み・別マップ。同 id の未削除ノードあり |
+| `create_node` | 新ノードの全項目（id, parent_id, sort_key, text, note, style, collapsed, is_floating, position_x, position_y） | 作成したノードの id | 親が存在しない・削除済み・別マップ。同 id の未削除ノードあり。sort_key が兄弟内で重複 |
 | `delete_node` | 削除するノードの id | 削除した枝の全ノード・つながり線の削除前の全項目 | ルートノードを削除しようとした |
-| `move_node` | id, new_parent_id, new_sort_key（必ず同時に送る） | 元の parent_id, sort_key | 循環ができる移動。親が削除済み。ルートを移動しようとした |
+| `move_node` | id, new_parent_id, new_sort_key（必ず同時に送る） | 元の parent_id, sort_key | 循環ができる移動。親が削除済み。ルートを移動しようとした。sort_key が兄弟内で重複 |
 | `update_node` | id, 変更した項目と新しい値 | 同じ項目の元の値 | ノードが存在しない・削除済み |
 | `update_map` | 変更した項目（title, layout） | 同じ項目の元の値 | ― |
 | `create_link` | つながり線の全項目 | 作成したつながり線の id | ※ P1 スコープ外 |
@@ -106,16 +112,20 @@ op_type と payload / inverse_payload の対応（詳細は `docs/requirements/0
 
 **項目単位の後勝ち（D-13）**：`update_node` / `update_link` / `move_node` は項目単位で後から届いた値を残す。同じ項目への変更は `seq` の大きいほうが残る。
 
+**seq の採番（`docs/requirements/05a-tables.md` の適用の手順）**：サーバーは `mindmaps` の行を `SELECT FOR UPDATE` でロックしてから `seq` を採番する。`(map_id, seq)` の一意制約により、同じマップ内で `seq` は一意かつ単調増加することが保証される。
+
 ### 兄弟の並び順（sort_key：分数インデックス）
 
 `sort_key` は COLLATE "C" の文字列比較で順序を表す分数インデックスを使う（D-01）。
 
-**採番ルール**：
+**クライアント**が `fractional-indexing-jittered`（CC0）ライブラリを使って `sort_key` を生成する。サーバーは **形式** と **兄弟内の一意性** だけを検証する。
+
+採番ルール：
 - **末尾に追加**：既存の最大 `sort_key` より辞書順で大きい文字列を生成する。
 - **兄弟間に挿入**：前の `sort_key` と後の `sort_key` の midpoint を計算する。
 - **先頭に挿入**：既存の最小 `sort_key` より辞書順で小さい文字列を生成する。
 
-**未決**：sort_key の midpoint 計算を繰り返した際の文字列長増大（衝突リスク）と、再割り当て（rebalance）の発動条件・タイミング。
+**sort_key 衝突時の処理**：サーバーが兄弟内の重複を検出した場合、**409**（`/problems/sort-key-conflict`）を返す。クライアントは `sort_key` を作り直して再送する。rebalance は行わない。
 
 ### RLS とワークスペースの文脈（D-19）
 
@@ -136,7 +146,14 @@ workspace_id = ANY(app_current_workspace_ids())
 workspace_id = ANY(app_current_workspace_ids())
 ```
 
-`app_current_workspace_ids()` は `current_setting('app.workspace_ids', true)` を UUID 配列にキャストするヘルパー関数（ADR 0035）。
+`app_current_workspace_ids()` の実装：
+
+```sql
+-- current_setting の missing_ok=true で未設定時は空文字列を返す
+current_setting('app.workspace_ids', true)::uuid[]
+```
+
+このヘルパー関数はマイグレーションで作成する（ADR 0035 の手順に従う）。
 
 ### API エンドポイント
 
@@ -147,7 +164,8 @@ workspace_id = ANY(app_current_workspace_ids())
 | `GET` | `/api/v1/mindmaps` | マップ一覧（カーソルページング） | 200 |
 | `POST` | `/api/v1/mindmaps` | マップ作成（冪等：同 id で再送したら既存を返す） | 201 |
 | `GET` | `/api/v1/mindmaps/{mapId}` | マップ取得（全ノード・つながり線含む） | 200 |
-| `PATCH` | `/api/v1/mindmaps/{mapId}` | マップ更新（title, deleted_at） | 200 |
+| `PATCH` | `/api/v1/mindmaps/{mapId}` | マップ更新（title のみ） | 200 |
+| `DELETE` | `/api/v1/mindmaps/{mapId}` | マップの論理削除 | 204 |
 | `POST` | `/api/v1/mindmaps/{mapId}/operations` | 操作のまとまりを適用 | 200 |
 | `GET` | `/api/v1/mindmaps/{mapId}/operations` | `?after={seq}` で指定 seq 以降の操作を取得 | 200 |
 
@@ -171,10 +189,16 @@ workspace_id = ANY(app_current_workspace_ids())
 
 // Response
 {
-  seq: number,                 // このバッチに採番された最後の seq
-  operationsAfter: Array<...>  // baseSeq より後の他の操作（追いつき用）
+  seq: number,                  // このバッチに採番された最後の seq
+  operationsAfter: Array<...>,  // baseSeq より後の他の操作（追いつき用）
+  appliedOperations: Array<{    // 適用された各操作とその逆操作
+    id: string,
+    inversePayload: object      // サーバーが組み立てた inverse_payload
+  }>
 }
 ```
+
+`delete_node` の `inversePayload` には、削除した枝のすべてのノードとつながり線の削除前の全項目が含まれる（後述「Undo / Redo の設計」参照）。
 
 **ETag**：`GET /api/v1/mindmaps/{mapId}` のレスポンスに `ETag: "{last_seq}"` を付ける。
 
@@ -189,10 +213,13 @@ workspace_id = ANY(app_current_workspace_ids())
 | 親ノードが存在しない・削除済み | 409 | `/problems/invalid-parent` |
 | 同 id の未削除ノードあり（create_node） | 409 | `/problems/duplicate-node-id` |
 | 存在しない・削除済みノードへの update/move | 409 | `/problems/node-not-found` |
+| sort_key が兄弟内で重複 | 409 | `/problems/sort-key-conflict` |
 | 1,000 操作超過 | 422 | `/problems/batch-too-large` |
+| テキストが 1,000 字超、またはトピックが 2,000 個超 | 422 | `/problems/limit-exceeded` |
 | 未認証 | 401 | — |
-| ワークスペース非所属 | 403 | — |
 | マップが見つからない（または見る権限がない） | 404 | — |
+
+ワークスペース非所属のマップへのアクセスは、存在を知らせないため 404 として扱う。
 
 ---
 
@@ -209,16 +236,16 @@ src/features/map/
 │   ├── NodeElement.tsx       # 個々のノード（HTML div、絶対配置）
 │   ├── EditableText.tsx      # インライン編集テキスト（IME 対応）
 │   ├── CollapseToggle.tsx    # 折りたたみ丸ボタン
-│   └── EdgeLayer.tsx         # つながり線 SVG レイヤー
+│   └── EdgeLayer.tsx         # 親子接続線 SVG レイヤー（P1 は親子接続線のみ）
 ├── hooks/
 │   ├── useMapEditor.ts       # エディタ全体の初期化・データ取得
-│   ├── useOperationQueue.ts  # 操作のキューイングと POST
+│   ├── useOperationQueue.ts  # 操作のキューイングと POST（楽観的更新・rebase）
 │   ├── useUndoStack.ts       # Undo/Redo スタック管理
 │   ├── useAutoLayout.ts      # d3-hierarchy によるレイアウト計算
 │   ├── useKeyboardShortcuts.ts # キーボード操作（MM-06）
 │   ├── useImeComposition.ts  # IME compositionstart/end フラグ
-│   ├── usePanZoom.ts         # pan/zoom のポインターイベント処理
-│   └── useCatchUp.ts         # 追いつき API ポーリング
+│   ├── usePanZoom.ts         # pan/zoom のポインターイベント処理（自前実装）
+│   └── useCatchUp.ts         # 追いつき API ポーリング（画面復帰時 + 30 秒ごと）
 ├── store/
 │   └── mapEditorStore.ts     # Zustand ストア
 └── api/
@@ -247,6 +274,7 @@ interface MapEditorState {
 
   // 操作キュー
   pendingOperations: PendingBatch[]
+  isSending: boolean             // 送信中フラグ（キューは1つずつ順に送る）
   lastAcknowledgedSeq: number
 
   // アクション
@@ -260,6 +288,7 @@ interface MapEditorState {
   setViewTransform(t: ViewTransform): void
   enqueueBatch(batch: PendingBatch): void
   acknowledgeBatch(batchId: string, seq: number): void
+  rollbackBatch(batchId: string): void  // 409 時のロールバック
 }
 ```
 
@@ -268,7 +297,7 @@ interface MapEditorState {
 interface BatchOperation {
   batchId: string
   operations: OperationSpec[]
-  inverseOperations: OperationSpec[]  // Undo 用
+  inverseOperations: OperationSpec[]  // Undo 用（サーバーの inversePayload から構成）
   intent?: string
 }
 
@@ -279,10 +308,13 @@ interface PendingBatch {
   origin: OperationOrigin
   intent?: string
   operations: OperationSpec[]
+  optimisticNodes: NodeSnapshot[]  // ロールバック用のスナップショット
 }
 ```
 
-### 操作のクライアント側フロー
+### 操作のクライアント側フロー（楽観的更新・キュー管理）
+
+操作は NF-02（100 ミリ秒以内の応答）を満たすため、まずクライアントの状態に即時反映して画面に出す。サーバーへの送信は裏で行う。
 
 ```mermaid
 sequenceDiagram
@@ -292,15 +324,35 @@ sequenceDiagram
     participant Server as POST /operations
     participant TQ as TanStack Query
 
-    User->>Store: selectNode / startEditing / ...
-    User->>Queue: enqueueOperation(opType, payload)
+    User->>Store: ノードを追加 / 移動 / 更新
+    Store->>Store: 楽観的更新（即時反映）
     Queue->>Queue: UUIDv7 で id・batch_id を生成
-    Queue->>Queue: inverse_payload を組み立てて undoStack に積む
-    Queue->>Server: POST /api/v1/mindmaps/:mapId/operations
-    Server-->>Queue: { seq, operationsAfter }
-    Queue->>TQ: queryClient.setQueryData() でノードキャッシュを更新
-    Queue->>Store: acknowledgeBatch(batchId, seq)
+    Queue->>Queue: sort_key を fractional-indexing-jittered で生成
+    Queue->>Store: enqueueBatch(batch)
+
+    alt isSending = false（キューの先頭）
+        Queue->>Queue: isSending = true
+        Queue->>Server: POST /api/v1/mindmaps/:mapId/operations
+        alt 成功（200）
+            Server-->>Queue: { seq, operationsAfter, appliedOperations }
+            Queue->>Queue: inversePayload を undoStack に積む
+            Queue->>TQ: queryClient.setQueryData() でキャッシュ更新
+            Queue->>Store: acknowledgeBatch(batchId, seq)
+            Queue->>Queue: operationsAfter を rebase（未送信バッチの操作の下に当て直す）
+            Queue->>Queue: isSending = false。次のバッチを送信
+        else 409（sort-key-conflict）
+            Server-->>Queue: 409
+            Queue->>Queue: sort_key を作り直して再送
+        else 409（その他）/ 5xx
+            Server-->>Queue: 409 / 5xx
+            Queue->>Store: rollbackBatch（その操作以降のキューをすべてロールバック）
+            Queue->>TQ: GET /api/v1/mindmaps/:mapId でサーバー状態を再取得
+            Queue->>Queue: isSending = false
+        end
+    end
 ```
+
+**ノード追加時の即時フォーカス（MM-02、NF-02）**：サーバーの返事を待たずに `EditableText` にフォーカスして編集を始める。
 
 **Undo の手順（D-15）**：
 1. `undoStack` からバッチを取り出す
@@ -314,26 +366,24 @@ sequenceDiagram
 
 ### 追いつき API（`useCatchUp`）
 
-P1 ではポーリングで実装する。画面復帰時・一定間隔（未決：間隔）で `GET /api/v1/mindmaps/{mapId}/operations?after={lastAcknowledgedSeq}` を呼び出し、受け取った操作を TanStack Query のキャッシュに反映する。
+P1 ではポーリングで実装する。画面復帰時と **30 秒ごと**に `GET /api/v1/mindmaps/{mapId}/operations?after={lastAcknowledgedSeq}` を呼び出し、受け取った操作を TanStack Query のキャッシュに反映する（D-13）。
 
 P2 以降で SSE への移行を検討する（C-10）。
-
-**未決**：ポーリング間隔（例：30 秒）。
 
 ### 描画（ADR 0012）
 
 ```mermaid
 graph LR
     Nodes["nodes（HTML div）\n絶対配置"] --> Canvas["MapCanvas\nCSS transform\npan/zoom"]
-    Edges["EdgeLayer（SVG）"] --> Canvas
+    Edges["EdgeLayer（SVG）\nP1：親子接続線のみ"] --> Canvas
     Canvas --> Screen["スクリーン"]
 ```
 
 | 要素 | 実装方式 |
 |---|---|
 | ノード | `<div>` の絶対配置。`left` / `top` を CSS で設定 |
-| つながり線 | 1 枚の `<svg>` を重ね、`<path>` で描画 |
-| pan/zoom | CSS `transform: translate() scale()` |
+| 親子接続線 | 1 枚の `<svg>` を重ね、`<path>` で描画。P1 では親子接続線のみ（node_links は P1 スコープ外） |
+| pan/zoom | CSS `transform: translate() scale()`。**ADR 0012 のとおり自前の Pointer Events で実装**（d3-zoom は使わない） |
 | レイアウト計算 | `d3-hierarchy`（左右展開。新規追加・移動・折りたたみのたびに再計算） |
 | 文字幅測定 | `<canvas>` の `measureText()`（レイアウト計算の前に実行） |
 | アニメーション | CSS `transition: left, top`（ノード移動時） |
@@ -355,9 +405,7 @@ graph LR
 
 ### ズーム・パンの保存（MM-05）
 
-**未決**：`viewTransform`（scale, translateX, translateY）の保存先をサーバー（`user_settings` のような別テーブル）にするか `localStorage` にするか。
-
-P1 では実装コストが低い `localStorage` を採用し、キーを `thinkronos:map:{mapId}:viewTransform` とする方向で検討する。サーバー保存は複数端末での同期が必要と判断した場合に後から追加できる。
+`viewTransform`（scale, translateX, translateY）は `localStorage` に保存する（キー：`thinkronos:map:{mapId}:view`）。別の端末やブラウザで開くと、中心から表示される（MM-05）。サーバーへの保存は不要。
 
 ### 折りたたみ（MM-04）
 
@@ -392,9 +440,9 @@ redoStack: BatchOperation[]
 
 ### `inverse_payload` の組み立て
 
-クライアントは操作を POST する前に、成功後に使う `inverseOperations` を組み立ててスタックに積む。ただし `delete_node` の `inverse_payload`（枝全体の内容）はサーバーからレスポンスで受け取る必要がある。
+**サーバー**が各操作の `inversePayload` を組み立て、`POST /operations` のレスポンスの `appliedOperations` フィールドに含める。クライアントはこの値を使って `undoStack` に積む。
 
-**未決**：`delete_node` の `inverse_payload` をサーバーのレスポンスに含めるか、`GET /api/v1/mindmaps/{mapId}/operations?after={seq-1}&limit=1` で取得するか。
+`delete_node` の `inversePayload` には、削除した枝のすべてのノードとつながり線の削除前の全項目が含まれる。Undo 時は、**親から順に** `create_node`（同じ id を使い、論理削除されたノードを復活させる）を送る（`docs/requirements/05a-tables.md` の規則に準拠）。
 
 ---
 
@@ -411,14 +459,20 @@ sequenceDiagram
     participant API as POST /operations
 
     U->>UI: 親ノード選択中に Tab キー押下
+    UI->>Store: 楽観的更新（新ノードを即時反映）
     UI->>Store: startEditing(newNodeId)
+    UI->>UI: EditableText をフォーカス（NF-02：サーバー応答を待たない）
     UI->>Queue: enqueueOperation("create_node", { id, parent_id, sort_key, text: "" })
-    Queue->>Queue: inverseOperations = [{ opType: "delete_node", id }]
-    Queue->>Store: pushUndo(batch)
     Queue->>API: POST { operations: [create_node] }
-    API-->>Queue: { seq: 42, operationsAfter: [] }
-    Queue->>Store: acknowledgeBatch(batchId, 42)
-    UI->>UI: EditableText をフォーカス（空文字の状態で編集開始）
+    alt 成功
+        API-->>Queue: { seq: 42, appliedOperations: [{ id, inversePayload }], operationsAfter: [] }
+        Queue->>Store: undoStack に inversePayload を積む
+        Queue->>Store: acknowledgeBatch(batchId, 42)
+    else 409
+        API-->>Queue: 409
+        Queue->>Store: rollbackBatch（楽観的更新を戻す）
+        Queue->>API: GET /api/v1/mindmaps/:mapId（サーバー状態を再取得）
+    end
 ```
 
 ### ノードをドラッグして移動する（MM-03）
@@ -433,12 +487,16 @@ sequenceDiagram
     U->>Canvas: ノードをドラッグ開始（pointerdown）
     Canvas->>Canvas: ドラッグ中は仮の位置に表示（DOM 操作）
     U->>Canvas: ドラッグ終了（pointerup、新しい親の上）
-    Canvas->>Canvas: 新しい sort_key を計算（midpoint）
+    Canvas->>Canvas: fractional-indexing-jittered で新しい sort_key を計算
+    Canvas->>Canvas: 楽観的更新（即時反映）
     Canvas->>Queue: enqueueOperation("move_node", { id, new_parent_id, new_sort_key })
     Queue->>API: POST { operations: [move_node] }
     alt 成功
-        API-->>Queue: { seq: 43, operationsAfter: [] }
+        API-->>Queue: { seq: 43, appliedOperations: [...], operationsAfter: [] }
         Queue->>Queue: レイアウト再計算
+    else 409（sort-key-conflict）
+        API-->>Queue: 409
+        Queue->>Queue: sort_key を作り直して再送
     else 409（循環 or 親が削除済み）
         API-->>Queue: 409
         Queue->>Queue: ドラッグ前の位置に戻す（楽観的更新のロールバック）
@@ -449,49 +507,76 @@ sequenceDiagram
 
 ## Correctness Properties
 
-以下の特性を `tests/unit/` および `tests/integration/` で確認する。
+テストツール：
+- バックエンド（Python）：**Hypothesis**
+- フロントエンド（TypeScript）：**fast-check**
+
+以下の性質を `tests/unit/` および `tests/integration/` で確認する。
 
 ### Property 1: 操作ログの冪等性
 
 同じ `batch_id` を 2 回送っても `nodes` と `map_operations` の状態が変わらない（結合テスト）。
 
-**Validates: Requirements MM-07, D-15**
+**Validates: Requirements 8.5**
 
-### Property 2: 循環なし
+**テストツール**：Hypothesis（結合テスト）
 
-`move_node` を適用しても、ノードが自分の子孫にならない（単体テスト：domain 層の循環検出）。
+### Property 2: 順序非依存の循環なし
 
-**Validates: Requirements MM-03, D-13**
+任意の順序で `move_node` を適用しても、ノードが自分の子孫にならない（Hypothesis）。
+
+**Validates: Requirements 3.4**
+
+**テストツール**：Hypothesis（単体テスト：domain 層の循環検出）
 
 ### Property 3: ルート不変
 
 `delete_node` / `move_node` でルートノードに対して必ず 409 を返す（結合テスト）。
 
-**Validates: Requirements MM-02, MM-03**
+**Validates: Requirements 2.8, 3.6**
+
+**テストツール**：Hypothesis（結合テスト）
 
 ### Property 4: sort_key 一意性
 
 兄弟の `sort_key` が重複しない（挿入・並べ替え後も）（単体テスト）。
 
-**Validates: Requirements MM-02, MM-03, D-01**
+**Validates: Requirements 3.2, 3.7**
 
-### Property 5: Undo 可逆性
+**テストツール**：fast-check（フロントエンド単体テスト）
 
-操作 → Undo で元の `nodes` のスナップショットと一致する（同一タブ・割り込みなしの条件下）（結合テスト）。
+### Property 5: Undo-Redo 可逆性
 
-**Validates: Requirements MM-07, D-15**
+操作 → Undo → Redo を繰り返しても元の状態に戻る（同一タブ・割り込みなしの条件下）（fast-check + Hypothesis）。
+
+**Validates: Requirements 7.2, 7.3, 7.4**
+
+**テストツール**：fast-check（フロントエンド）+ Hypothesis（バックエンド結合テスト）
 
 ### Property 6: スナップショット整合性
 
-スナップショット + それ以降の操作を再適用した結果が現在の `nodes` と一致する（結合テスト）。
+スナップショット + それ以降の操作を再生した結果が現在の `nodes` と一致する（Hypothesis、結合テスト）。
 
-**Validates: Requirements D-12, D-16**
+**Validates: Requirements 8.5**
+
+**テストツール**：Hypothesis（結合テスト）
 
 ### Property 7: 認可
 
-別ワークスペースのマップへの操作は RLS により拒否される（結合テスト：D-14、AU-03）。
+別ワークスペースのマップへの操作は RLS により 404 として拒否される（結合テスト：D-14、AU-03）。
 
-**Validates: Requirements AU-03, D-14**
+**Validates: Requirements 10.1, 10.2**
+
+**テストツール**：Hypothesis（結合テスト）
+
+
+### Property 8: seq の一意性・単調増加
+
+同じマップへの操作バッチを任意の順序・タイミングで送信しても、`map_operations` に記録された `(map_id, seq)` の組はすべて一意であり、`seq` は単調増加する。
+
+**Validates: Requirements 8.7**
+
+**テストツール**：Hypothesis（結合テスト）
 
 ---
 
@@ -509,7 +594,7 @@ sequenceDiagram
 
 - Testcontainers + PostgreSQL 18（`thinkronos/postgres:18`）を使用
 - `thinkronos_app` ロールで接続し、RLS が有効な状態で確認（ADR 0035、I-01）
-- 上記 P-01〜P-07 の特性を確認
+- 上記 P-01〜P-07 の性質を確認
 - マイグレーション：適用 → 戻す → 再適用
 
 ### フロントエンドテスト（`frontend/src/features/map/`）
@@ -528,14 +613,7 @@ sequenceDiagram
 
 ## 未決事項
 
-| ID | 内容 | 決める時期 |
-|---|---|---|
-| U-01 | ズーム・パンの保存先（`localStorage` vs サーバーの別テーブル） | P1 実装前 |
-| U-02 | `sort_key` 衝突時の再割り当て（rebalance）の発動条件とタイミング | P1 実装前 |
-| U-03 | 1 つのマップに置けるトピック数の上限と、テキストの文字数の上限（NF-02 の前提は 500 トピック） | P1 実装前 |
-| U-04 | 追いつき API のポーリング間隔（P1 はポーリング。P2 以降で SSE を検討、C-10） | P1 実装前 |
-| U-05 | 同じマップを 2 つのタブで同時に編集したときの表示の整合（後勝ちだが追いつき API の頻度で視覚的なずれが生じる） | P1 実装前 |
-| U-06 | `delete_node` の `inverse_payload` の取得方法（サーバーのレスポンスに含める vs 追いつき API で取得） | P1 実装前 |
+現時点で未決の事項はない。
 
 ---
 
@@ -543,8 +621,8 @@ sequenceDiagram
 
 | ライブラリ | 用途 | ライセンス |
 |---|---|---|
+| `fractional-indexing-jittered` | sort_key の生成（クライアント） | CC0 |
 | `d3-hierarchy` | ツリーレイアウト計算 | ISC |
-| `d3-zoom` | ズーム補助（pan/zoom の数値計算のみ使用する場合） | ISC |
 | `@tanstack/react-query` | サーバーデータのキャッシュと再取得 | MIT |
 | `zustand` | エディタ内状態管理 | MIT |
 | `openapi-fetch` | 型安全な API クライアント | MIT |
