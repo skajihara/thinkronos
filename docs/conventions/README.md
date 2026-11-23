@@ -40,7 +40,7 @@
 | --- | --- | --- |
 | Pythonのモジュール | snake\_case.py | map\_service.py |
 | Pythonのテスト | test\_<対象>.py | test\_map\_service.py |
-| Reactのコンポーネント | PascalCase.tsx | MapCanvas.tsx |
+| Reactのコンポーネント | PascalCase.tsx。shadcn/ui の CLI が作る `src/shared/ui/` の部品は CLI の名前のまま（ADR 0036） | MapCanvas.tsx |
 | Reactのフック | use<名前>.ts | useMapOperations.ts |
 | そのほかのTypeScript | camelCase.ts | apiClient.ts |
 | TypeScriptのテスト | <対象>.test.ts(x) | MapCanvas.test.tsx |
@@ -211,7 +211,7 @@
 | 型の設定 | tsconfigで `strict` と `noUncheckedIndexedAccess` を有効にする |
 | any | 禁止。型が分からない値は `unknown` で受けて絞り込む。型アサーション（as）は最小限にし、使う理由をコメントに書く |
 | コンポーネント | 関数コンポーネントだけを使う。1ファイルに1コンポーネント。名前付きexportにし、default exportは使わない（フレームワークが求める場合を除く） |
-| 状態の置き場所 | サーバーのデータはTanStack Query、エディタの中の状態はZustand（C-11で確定する）。グローバルな状態は増やさない |
+| 状態の置き場所 | サーバーのデータはTanStack Query、エディタの中の状態はZustand（C-11、ADR 0036）。グローバルな状態は増やさない |
 | useEffect | データの取得には使わない（TanStack Queryを使う）。外部との同期だけに使う |
 | スタイル | Tailwind CSSのユーティリティとデザイントークンを使う。任意の値（例：`w-[137px]`）は多用しない |
 | UIの文言 | コンポーネントに直接書かず、`src/shared/messages/ja.ts` に集める |

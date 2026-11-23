@@ -1,7 +1,7 @@
 # シェルに依存しない書き方にする（PowerShell から GNU Make を呼んでも動くように）。
 # レシピは単純なコマンド1行だけにし、grep/awk などの外部コマンドや bash 構文を使わない。
 .DEFAULT_GOAL := help
-.PHONY: help setup up up-cpu down pull-models grafana test lint migrate seed gen-openapi agent-smoke gen-types
+.PHONY: help setup up up-cpu down pull-models grafana test lint migrate seed gen-openapi agent-smoke gen-types web
 
 COMPOSE_GPU = docker compose -f compose.yaml -f compose.gpu.yaml
 
@@ -19,7 +19,8 @@ help: ## 一覧を表示する
 	$(info make seed         デモ用のシードを入れる（make up の後）)
 	$(info make gen-openapi  openapi.json を作り直す)
 	$(info make agent-smoke  エージェント（Ollama）で子ノードを提案させる（make up と make pull-models の後）)
-	$(info make gen-types    未実装（フロントの土台のIssueで実装）)
+	$(info make gen-types    openapi.json からフロントのAPI型を作り直す)
+	$(info make web          画面の開発サーバーを起動する（http://localhost:5173、APIは make up で起動）)
 	@echo (make 名前 で実行する)
 
 setup: ## git hooks を入れる
@@ -57,8 +58,11 @@ gen-openapi: ## openapi.json（リポジトリ直下）を作り直す（C-28）
 agent-smoke: ## エージェントで子ノードを提案させる
 	docker compose exec api python -m thinkronos.cli suggest
 
-gen-types: ## API型の生成（未実装）
-	@echo gen-types: not implemented yet
+gen-types: ## openapi.json からフロントのAPI型を作る（C-28）
+	npm --prefix frontend run gen-types
+
+web: ## 画面の開発サーバー（Vite）。/api と /healthz は 127.0.0.1:8000 へ転送する
+	npm --prefix frontend run dev
 
 grafana: ## Grafana のURLを表示する
 	@echo Grafana: http://127.0.0.1:3000 (ログイン不要。make up の後に開く)
