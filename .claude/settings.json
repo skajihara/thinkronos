@@ -20,7 +20,7 @@
       "Bash(git push origin main *)",
       "Bash(git push origin develop *)",
       "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(./.env.local)"
     ]
   },
   "hooks": {
