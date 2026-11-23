@@ -80,7 +80,8 @@ APIとワーカーの土台を作るにあたり、次を決める必要があ�
 - ローカルの所有者（`POSTGRES_USER`）はスーパーユーザーなので RLS を迂回する。所有者で動作を確かめない。AWS ではマスターユーザーはスーパーユーザーではないが、所有者と同じく `FORCE` で RLS の対象になる。
 - ロールはクラスタ全体のものなので、同じクラスタに複数のデータベースを作る場合はパスワードが共有される。
 - `alembic.ini` は ASCII だけで書く。Alembic は OS の既定の文字コードで読む（Windows では cp932）。`.importlinter` も、Windows で実行するときは `PYTHONUTF8=1` が要る（CI は Linux なので不要）。
-- Windows の Docker Desktop では、Testcontainers の Ryuk（後片付けのコンテナ）のポートの割り当てが間に合わず、結合テストが `Port mapping ... 8080 is not available` で失敗することがある。もう一度実行すると通る。CI（Linux）では未確認。
+- Windows の Docker Desktop では、Testcontainers の Ryuk（後片付けのコンテナ）のポートの割り当てが間に合わず、結合テストが `Port mapping ... 8080 is not available` で失敗することがある。もう一度実行すると通る。CI（Linux）では起きなかった（PR #34 の初回実行）。
+- 層の依存に反する import（application → adapters）で、CI の「Import layers」が BROKEN になり、`ci-gate` が失敗することを確かめた（確認用の下書きPR #35、クローズ済み）。ADR 0034 の「未検証」はこれで確かめた。
 - 認証は別Issue。今は呼び出し側が `Actor(user_id, workspace_ids)` を組み立てて渡す。
 
 ## 参照
