@@ -33,8 +33,9 @@ CIで PRタイトル（`pr-title`）、PR内の全コミット（`commitlint`）
 ## 初回セットアップ（Windows、PowerShell）
 1. GNU Make：`winget install ezwinports.make`（入れたら PowerShell を開き直す）
 2. pre-commit：`uv tool install pre-commit`
-3. Node.js（commitlint用）と Docker Desktop を入れる
-4. リポジトリ直下で `Copy-Item .env.example .env`（中のパスワードを変える）、`make setup`
+3. Node.js の LTS 版（22 以上）：`winget install OpenJS.NodeJS.LTS`。npm を PowerShell から使うため、`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` も実行する
+4. Docker Desktop を入れる
+5. リポジトリ直下で `Copy-Item .env.example .env`（中のパスワードを変える）、`make setup`、`npm --prefix frontend ci`
 
 Makefile は bash に依存しない書き方にしてあるので、PowerShell から `make` を実行できる。
 
