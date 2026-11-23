@@ -4,6 +4,20 @@ AIツールごとに、機能・使ったクレジット・手戻り・気づき
 
 ## Claude Code
 
+### 2026-11-23：Issue #13「バックエンドの土台を作る」
+- **使った機能**：`/issue-workflow`（計画 → 承認 → 実装 → PR → 結果）、`web-fetch` エージェントで公式の文書と PyPI の確認、Testcontainers・compose を使った動作確認。
+- **使ったクレジット**：未計測。
+- **手戻り**：
+  - フックが cwd からの相対パスで書かれていて、`backend/` に `cd` した後の Bash がすべて止まった。`$CLAUDE_PROJECT_DIR` 起点に直した。
+  - `alembic.ini` と `.importlinter` を、Windows の既定の文字コード（cp932）で読まれて失敗した。`alembic.ini` は ASCII にし、import-linter は `PYTHONUTF8=1` で実行する。
+  - Celery の `@app.task` は既定で全アプリに共有され、テストで2つ目のアプリのタスクが無視された（`shared=False`）。
+  - Celery が標準出力を横取りし、1行1JSONのログに接頭辞が付いた（`worker_redirect_stdouts=False`）。
+  - 手元の DB のボリュームの所有者のパスワードが `.env` と違っていた（stub は DB につながないので気づかなかった）。確認は別の compose プロジェクト（`-p thinkronos-check`）で行った。
+- **気づき**：
+  - Strands の Ollama の文書のページが 404 だった。引数はインストールしたパッケージのソースで確かめた。
+  - 自動モードの分類器は、Issue の指示にあっても `.claude/settings.json` の deny の変更を止める。人の作業として残す。
+  - Windows の Docker Desktop で、Testcontainers の Ryuk のポートの割り当てが間に合わず、結合テストがときどき失敗した（再実行で通る）。
+
 ### 2026-11-23：Issue #12「AIツールの規約とエージェントの型を整える」
 - **使った機能**：Issueの指示コメントを読んで計画を投稿（`gh`）、公式ドキュメントの確認をサブエージェントに委任、フック、サブエージェント、スキル、ヒアドキュメントでのファイル作成。
 - **使ったクレジット**：未計測（この環境では使用量を確認できなかった）。
