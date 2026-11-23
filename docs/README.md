@@ -28,6 +28,8 @@ Thinkronos の設計・運用の文書。正本はこの `docs/` のMarkdownで�
 | [conventions/](conventions/README.md) | 実装規約 |
 | [decisions.md](decisions.md) | 決定事項一覧（状態の表） |
 | [adr/](adr/README.md) | 設計判断の記録（ADR） |
+| [architecture/](architecture/README.md) | C4の図、主要な処理の図、脅威モデリング |
+| [guide/](guide/README.md) | 機能ごとの使い方（操作マニュアルの元） |
 | [tool-notes.md](tool-notes.md) | ツールごとの使い方の記録 |
 
 ## 工程ごとの成果物（K-08）
