@@ -20,7 +20,7 @@ updates:
     schedule: { interval: weekly }
     commit-message: { prefix: ci, include: scope }
   - package-ecosystem: docker
-    directories: [/docker/postgres, /docker/stub, /backend, /frontend]
+    directories: [/docker/postgres, /backend, /frontend]
     schedule: { interval: weekly }
     commit-message: { prefix: chore, include: scope }
   - package-ecosystem: docker-compose

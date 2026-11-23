@@ -1,16 +1,13 @@
 name: thinkronos
 
-x-stub: &stub
-  build: ./docker/stub
+# api / worker / scheduler は同じイメージ（backend/Dockerfile）で、起動のコマンドだけ変える（ADR 0035）
+x-backend: &backend
+  image: thinkronos/backend:local
+  build: ./backend
   depends_on:
-    postgres: {condition: service_healthy}
+    migrate: {condition: service_completed_successfully}
     redis: {condition: service_healthy}
     lgtm: {condition: service_healthy}
-  healthcheck:
-    test: ["CMD", "python", "healthcheck.py"]
-    interval: 5s
-    timeout: 3s
-    retries: 10
   restart: unless-stopped
 
 x-otel: &otel
@@ -18,6 +15,14 @@ x-otel: &otel
   OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
   OTEL_METRIC_EXPORT_INTERVAL: "10000"
   OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=local
+
+# アプリはテーブルの所有者ではないロール（thinkronos_app）で接続する（D-14）。パスワードは英数字にする（URLに入るため）
+x-app-env: &app-env
+  DATABASE_URL: postgresql+asyncpg://thinkronos_app:${APP_DB_PASSWORD:?.env に APP_DB_PASSWORD を足す（.env.example 参照）}@postgres:5432/${POSTGRES_DB:-thinkronos}
+  REDIS_URL: redis://redis:6379/0
+  OLLAMA_HOST: http://ollama:11434
+  OLLAMA_MODEL: qwen3:8b
+  WORKER_ASYNC_MODE: run
 
 services:
   postgres:
@@ -77,18 +82,45 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # マイグレーション（所有者のロール）。終わったら止まる。api・worker・scheduler はこれの成功を待つ
+  migrate:
+    image: thinkronos/backend:local
+    build: ./backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-thinkronos}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?.env に APP_DB_PASSWORD を足す（.env.example 参照）}
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
   api:
-    <<: *stub
-    environment: {<<: *otel, OTEL_SERVICE_NAME: api, SERVICE_NAME: api, PORT: "8000"}
+    <<: *backend
+    environment: {<<: [*otel, *app-env], OTEL_SERVICE_NAME: api}
     ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
 
   worker:
-    <<: *stub
-    environment: {<<: *otel, OTEL_SERVICE_NAME: worker, SERVICE_NAME: worker, PORT: "8000"}
+    <<: *backend
+    command: ["celery", "-A", "thinkronos.bootstrap:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    environment: {<<: [*otel, *app-env], OTEL_SERVICE_NAME: worker}
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A thinkronos.bootstrap:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
 
+  # 定期実行（celery beat）。登録するスケジュールは今は無い
   scheduler:
-    <<: *stub
-    environment: {<<: *otel, OTEL_SERVICE_NAME: scheduler, SERVICE_NAME: scheduler, PORT: "8000"}
+    <<: *backend
+    command: ["celery", "-A", "thinkronos.bootstrap:celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    environment: {<<: [*otel, *app-env], OTEL_SERVICE_NAME: scheduler}
+    healthcheck:
+      # beat は HTTP を持たないので、PID 1 が beat であることだけを見る（落ちれば restart で再起動する）
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0 if b'beat' in open('/proc/1/cmdline','rb').read() else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pgdata:
