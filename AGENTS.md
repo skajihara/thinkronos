@@ -8,8 +8,10 @@ Thinkronos：マインドマップをAIがカレンダーの時間ブロック�
 ## ディレクトリ
 | 場所 | 内容 |
 |---|---|
-| `docs/` | 設計・運用の文書。`docs/adr/`（設計判断）、`docs/observability.md` |
-| `docs/conventions/` | 実装規約（別Issueで追加予定。入ったらここを正とする） |
+| `docs/` | 設計・運用の文書。索引は `docs/README.md` |
+| `docs/requirements/` | 要件定義書（要件ID、画面、データ、テスト計画など） |
+| `docs/conventions/` | 実装規約。実装はここに従う |
+| `docs/adr/` | 設計判断（ADR）。予約済みの番号は `docs/adr/README.md` |
 | `backend/` | API・ワーカー（Python 3.13、uv）。層は ADR 0035 と `.importlinter` |
 | `docker/`、`compose*.yaml` | ローカル環境（Postgres、Redis、Ollama、監視） |
 | `spike/` | 試作。`develop` にはマージしない |
@@ -24,7 +26,8 @@ Windows（PowerShell）から実行できる。詳細は `CONTRIBUTING.md`。
 `main` と `develop` は直接変更しない。必ずブランチを切ってPRを通す。
 
 ## 文書の場所
-- 要件・要件ID：`docs/` を参照する（コードやコミットでは要件IDで指す）
+- 要件・要件ID：`docs/requirements/`（コードやコミットでは要件IDで指す）
+- 決定事項の状態：`docs/decisions.md`。未決の論点はラベル `decision` のIssue
 - 設計判断：`docs/adr/`（書き方は `docs/adr/README.md`）
 - ツールごとの使い方の記録：`docs/tool-notes.md`
 
