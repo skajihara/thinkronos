@@ -24,10 +24,12 @@
 
 | 番号 | 題 | 状態 |
 |---|---|---|
+| [0005](0005-async-jobs.md) | 非同期ジョブの基盤（Celery＋Redis、async は asyncio.run） | 承認済み（2026-11-23） |
 | [0012](0012-map-rendering.md) | マインドマップの描画方式（Hybrid） | 承認済み（2026-11-23） |
 | [0031](0031-calendar-library.md) | カレンダーのライブラリ（FullCalendar v7） | 承認済み（2026-11-23） |
 | [0032](0032-local-llm-and-embedding.md) | ローカルLLMと埋め込みモデル（qwen3:8b ＋ bge-m3） | 承認済み（2026-11-23） |
 | [0033](0033-postgresql-major-version.md) | PostgreSQLのメジャーバージョン（18） | 承認済み（2026-11-23） |
 | [0034](0034-ci.md) | CIの構成（uv、diff-cover、Trivy、ci-gate） | 承認済み（2026-11-23） |
+| [0035](0035-backend-foundation.md) | バックエンドの土台（Python 3.13、層、Alembic、factory_boy、RLS） | 承認済み（2026-11-23） |
 
-上記以外の番号は、このPRの時点ではまだ書かれていない。
+上記以外の番号は、まだ書かれていない（予定の一覧は企画書にある）。

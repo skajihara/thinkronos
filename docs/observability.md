@@ -7,9 +7,13 @@ NF-19、ADR 0015（正式な記録は Issue「設計の記録を残す」で書�
 - ローカルの受け側は `grafana/otel-lgtm`（compose の `lgtm`）。会社のAWSでは ADOT に置き換える。
 - **アプリのコードにバックエンド固有の設定を書かない。** 送信先は `OTEL_*` 環境変数だけで切り替える。
 
-## 共通の設定（本物のAPI・worker・schedulerでもそのまま使う）
-- 実装：`docker/stub/telemetry.py`（`setup(service)` が logger・tracer・meter を返す）。
-- 依存：`opentelemetry-sdk` と `opentelemetry-exporter-otlp-proto-http`（`docker/stub/requirements.txt` で固定）。
+## 共通の設定（API・worker・scheduler）
+- 実装：`backend/src/thinkronos/adapters/observability/`（Issue #13 で `docker/stub/telemetry.py` から移した）。
+  - `telemetry.py`：`setup(service)` がプロバイダとロガーを設定する。`request_id_var` を持つ。
+  - `http.py`：API のミドルウェア（`X-Request-ID`、スパン、`http.server.requests`、`request finished` のログ）。
+  - `celery_signals.py`：タスクへの `request_id` の引き継ぎ（メッセージのヘッダ `x_request_id`）と、`task started`／`task finished` のログ。
+- 組み立ては `thinkronos/bootstrap.py`。API は起動時、worker は fork の後の子プロセスごと、beat は起動時に1回設定する。
+- 依存：`opentelemetry-sdk` と `opentelemetry-exporter-otlp-proto-http`（`backend/uv.lock` で固定）。
 - 環境変数（compose の `x-otel` で全サービスに共通で渡す）：
 
 | 変数 | 値（ローカル） |
@@ -27,7 +31,9 @@ NF-19、ADR 0015（正式な記録は Issue「設計の記録を残す」で書�
  "message":"request finished","request_id":"…","trace_id":"…","span_id":"…",
  "http":{"method":"GET","path":"/healthz","status":200,"duration_ms":1.2}}
 ```
-- `request_id`：リクエストの `X-Request-ID` を使う。無ければ UUIDv4 を作る。レスポンスヘッダ `X-Request-ID` にも返す。
+- `request_id`：リクエストの `X-Request-ID` を使う。無ければ（または128文字を超える・表示できない文字を含むときは）UUIDv4 を作る。レスポンスヘッダ `X-Request-ID` にも返す。
+- ワーカーのタスクのログは、投入したリクエストの `request_id` を引き継ぐ。リクエストの外（CLI・beat）から投入したタスクは、タスクIDを使う。
+- Celery 自身のログ（起動・タスクの例外など）は JSON ではない（標準エラー出力）。
 - `trace_id` / `span_id`：有効なスパンがあるときだけ入る（W3C Trace Context、16進）。
 - コンテナのヘルスチェック（`X-Healthcheck` ヘッダ付き）は、テレメトリを送らない。
 

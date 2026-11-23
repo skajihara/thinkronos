@@ -47,7 +47,18 @@ Makefile は bash に依存しない書き方にしてあるので、PowerShell 
 | `make pull-models` | Ollama のモデル（qwen3:8b、bge-m3）を取得する。初回だけ、約6 GB |
 | `make grafana` | Grafana のURLを表示する（ログ・メトリクス・トレース） |
 | `make setup` / `make lint` | git hooks を入れる／pre-commit を全ファイルに実行する |
-| `make test` / `migrate` / `gen-types` | 未実装 |
+| `make test` | バックエンドのテスト（ユニットと結合。結合は Testcontainers で `thinkronos/postgres:18` を使うので、Docker を起動し、先に `make up` か `docker build -t thinkronos/postgres:18 docker/postgres` でイメージを作っておく） |
+| `make migrate` | DBマイグレーション（所有者のロールで実行。`make up` でも自動で実行される） |
+| `make seed` | デモ用のシードを入れる（何度実行してもよい） |
+| `make gen-openapi` | `openapi.json`（リポジトリ直下）を作り直す。APIを変えたらコミットする（CI が差分を見る） |
+| `make agent-smoke` | エージェント（Ollama、qwen3:8b）に子ノードを提案させる。`make pull-models` の後 |
+| `make gen-types` | 未実装（フロントの土台のIssueで実装） |
+
+## バックエンド（`backend/`、ADR 0035）
+- 層の構成と依存の向きは ADR 0035 と `.importlinter`。組み立ては `thinkronos/bootstrap.py` だけで行う。
+- 手元での検査は `backend/` で `uv run ruff check .`、`uv run mypy .`、`uv run lint-imports ../.importlinter`。Windows では `lint-imports` の前に `$env:PYTHONUTF8 = "1"` を設定する（設定ファイルを cp932 で読もうとして失敗するため）。
+- `.env` に `APP_DB_PASSWORD`（アプリのロールのパスワード、英数字）が要る。`.env.example` を参照。
+- 結合テストが `Port mapping ... 8080 is not available` で失敗したときは、もう一度実行する（Testcontainers の後片付けのコンテナの起動待ちが Docker Desktop で間に合わないことがある）。
 
 ポートは `127.0.0.1` だけに公開する（Postgres 5432、Redis 6379、Ollama 11435、api 8000、Grafana 3000、OTLP 4317/4318）。PC に Ollama を直接入れていても 11434 と被らない。
 
