@@ -15,4 +15,4 @@ disable-model-invocation: true
    - 試作のコードは取り込まず、ブランチを参照する。
 4. `docs/adr/README.md` の一覧に1行足す。
 5. 決定を変える場合は、既存のADRを書き換えず、新しいADRを書き、元の状態を「置き換え済み（NNNNで置き換え）」にする。
-6. 日本語で書く。書いたら、`docs-consistency-checker` エージェントで一覧とのずれを確かめる。
+6. 本文は日本語で書く（コミットメッセージとPRタイトルは英語）。書いたら、`docs-consistency-checker` エージェントで一覧とのずれを確かめる。

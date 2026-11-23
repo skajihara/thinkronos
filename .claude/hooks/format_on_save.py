@@ -1,7 +1,8 @@
-"""PostToolUse フック（Edit|Write）：保存したファイルを整える。
+"""PostToolUse hook (Edit|Write): tidy the saved file.
 
-共通の整形：末尾空白の除去（Markdown は行末の半角スペース2つを残す）、末尾に改行1つ、改行をLFに。
-言語ごとの整形ツールは FORMATTERS に足す。コマンドが未導入なら黙って飛ばす。
+Common rules: strip trailing whitespace (keep two trailing spaces in Markdown),
+end with exactly one newline, and use LF line endings.
+Add per-language formatters to FORMATTERS. Missing commands are skipped silently.
 """
 import json
 import shutil
@@ -9,8 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 拡張子 -> 整形コマンド（{file} を置き換える）。ツールを入れたらここに足す。
-# 例：".py": ["ruff", "format", "{file}"], ".ts": ["npx", "--no-install", "prettier", "--write", "{file}"]
+# Extension -> formatter command ({file} is replaced). Add entries when a tool is installed.
+# Example: ".py": ["ruff", "format", "{file}"], ".ts": ["npx", "--no-install", "prettier", "--write", "{file}"]
 FORMATTERS = {}
 
 TEXT_EXT = {".md", ".yml", ".yaml", ".json", ".py", ".sql", ".toml", ".ts", ".tsx", ".js", ".css", ".html"}

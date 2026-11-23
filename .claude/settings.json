@@ -19,6 +19,9 @@
       "Bash(git push -f *)",
       "Bash(git push origin main *)",
       "Bash(git push origin develop *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr merge)",
+      "Bash(gh issue close *)",
       "Read(./.env)",
       "Read(./.env.local)"
     ]
