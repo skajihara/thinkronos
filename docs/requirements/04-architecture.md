@@ -158,26 +158,26 @@ backend/
 | 言語 | Python | バックエンド全般とAI処理 | 確定 |
 | 言語 | TypeScript | フロントエンド | 確定 |
 | API | FastAPI＋Pydantic v2 | REST API、入力検証、OpenAPI定義の自動生成、SSE | 確定 |
-| ORM | SQLAlchemy 2.0（async） | DBアクセス | 確定 |
+| ORM | SQLAlchemy 2.1（async、asyncpg） | DBアクセス | 確定（ADR 0035） |
 | マイグレーション | Alembic | スキーマ管理 | 確定 |
-| 非同期ジョブ | Celery＋Redis | 同期、埋め込み生成、定時通知 | 確定 |
-| DB | PostgreSQL＋pgvector＋pg\_bigm | 業務データ、ベクトル検索、日本語の全文検索 | 確定 |
+| 非同期ジョブ | Celery＋Redis | 同期、埋め込み生成、定時通知 | 確定（ADR 0005） |
+| DB | PostgreSQL 18＋pgvector＋pg\_bigm | 業務データ、ベクトル検索、日本語の全文検索 | 確定（ADR 0033） |
 | AIエージェント | Strands Agents | エージェントとツールの定義、モデルの切り替え | 確定 |
-| LLM・埋め込み | Ollama | ローカルでの推論と埋め込み生成 | 確定（モデルは未選定） |
-| フロントエンド | React＋Vite | 画面 | 確定 |
-| フロントエンド | TanStack Query、openapi-typescript | サーバー状態の管理、APIの型生成 | 候補 |
-| マインドマップ描画 | React Flowか、自前のSVG・Canvas | ノードの描画、ドラッグ、ズーム | 候補（ADRで決定） |
-| カレンダー描画 | FullCalendarなど | 月・週・日の表示、ドラッグ操作 | 候補（ADRで決定） |
+| LLM・埋め込み | Ollama（qwen3:8b、bge-m3） | ローカルでの推論と埋め込み生成 | 確定（ADR 0032） |
+| フロントエンド | React 19＋Vite＋TypeScript 5.9、Tailwind CSS 4、shadcn/ui（Base UI） | 画面、UI部品 | 確定（ADR 0036） |
+| フロントエンド | TanStack Query、Zustand、openapi-typescript＋openapi-fetch | サーバー状態、画面の中の状態、APIの型と呼び出し | 確定（ADR 0036） |
+| マインドマップ描画 | Hybrid（HTMLのノード＋SVGの線＋CSS transform）、d3-hierarchy | ノードの描画、ドラッグ、ズーム、レイアウト | 確定（ADR 0012） |
+| カレンダー描画 | FullCalendar v7 | 月・週・日の表示、ドラッグ操作 | 確定（ADR 0031） |
 | 実行環境 | Docker Compose | ローカルでの一括起動 | 確定 |
-| CI | GitHub Actions | Lint、型チェック、テスト、ビルド | 確定 |
+| CI | GitHub Actions | Lint、型チェック、テスト、ビルド | 確定（ADR 0034） |
 | IaC | Terraform | AWS環境の構成定義 | 確定（P4で適用） |
 | 開発ツール | uv、Ruff、mypy、pytest、Testcontainers、Playwright、pre-commit | パッケージ管理、静的解析、テスト | 確定 |
 | AI開発ツール | Kiro、Claude Code | 仕様駆動開発、実装とレビュー | 確定 |
-| 可観測性 | OpenTelemetry、grafana/otel-lgtm（Prometheus、Loki、Tempo、Grafana） | ログ・メトリクス・トレースの収集と可視化 | 候補 |
+| 可観測性 | OpenTelemetry、grafana/otel-lgtm（Prometheus、Loki、Tempo、Grafana） | ログ・メトリクス・トレースの収集と可視化 | 確定（ADR 0015） |
 | ログ | structlog | JSON形式の構造化ログ | 候補 |
 | PWA | vite-plugin-pwa（Workbox） | マニフェストとService Workerの生成 | 候補 |
 | リリース | git-cliff、GHCR | CHANGELOGの生成、コンテナイメージの公開 | 候補 |
-| 品質・セキュリティ | commitlint、pip-audit、Trivy、gitleaks | コミット規約の検証、脆弱性と秘密情報の検出 | 候補 |
+| 品質・セキュリティ | commitlint、pip-audit、Trivy、gitleaks、import-linter、dependency-cruiser | コミット規約、脆弱性と秘密情報、層の依存の検査 | 確定（ADR 0034） |
 | AIレビュー | Claude Code GitHub Actions | PRの自動レビュー | 候補（導入は未決） |
 
 Javaの経験との対応は、uvがGradle・Maven、SQLAlchemyがJPA、AlembicがFlyway、Pydanticが Bean Validation、pytestがJUnitにあたる。
