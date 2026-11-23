@@ -39,8 +39,9 @@
 3. WHEN マップを削除するとき、THE System SHALL `mindmaps.deleted_at` を設定する論理削除を行い、マップを一覧から除外する。P1 では UI から復元できないが、データはDBに残る（MM-19 は PX）。
 4. WHEN 認証済みユーザーが自分のワークスペースに属するマップへアクセスするとき、THE System SHALL そのマップのデータを返す。(AU-03)
 5. IF マップが存在しない、または要求したユーザーが所属しないワークスペースのマップへアクセスするとき、THEN THE System SHALL 404 を返す。(AU-03、D-14)
-6. THE System SHALL マップのタイトルを変更できる API（`PATCH /api/v1/mindmaps/{mapId}`）を提供する。タイトル変更は `update_map` 操作としてOperationQueueを経由して送信する。
+6. WHEN ユーザーがマップの名前を変えるとき、THE MapEditor SHALL `update_map` 操作として OperationQueue から送信する。名前の変更専用のAPIは作らない（操作ログに残し、Undo できるようにする。D-15）。
 7. THE System SHALL カーソルページング方式（`cursor`・`limit`）でマップ一覧を返す（`GET /api/v1/mindmaps`）。
+8. WHEN マップを削除するとき、THE API SHALL `DELETE /api/v1/mindmaps/{mapId}` で受け付け、204 を返す。
 
 ---
 
@@ -56,6 +57,8 @@
 4. WHILE IME 変換中（`isComposing = true`）に Enter キーを受信するとき、THE MapEditor SHALL 変換確定として処理し、ノードを追加しない。
 5. WHEN ノードのテキストをダブルクリックするか F2 キーを押すとき、THE MapEditor SHALL そのノードのインライン編集を開始する。また選択中に文字入力を始めた場合も、既存テキストを上書きして編集を開始する。
 6. WHEN 編集中に Esc キーを押すとき、THE MapEditor SHALL 編集を取り消しテキストを変更前に戻す。
+6a. WHEN 編集中（IME 変換中でないとき）に Enter を押すとき、THE MapEditor SHALL 入力を確定して編集を終える（兄弟は追加しない）。Shift+Enter はトピック内の改行とする。Tab は入力を確定し、子ノードを追加して編集を始める。
+6b. WHILE IME 変換中（`isComposing = true`、または `keydown` の `keyCode` が 229）のとき、THE MapEditor SHALL Enter・Shift+Enter・Tab・Esc・矢印を含むすべてのショートカットを処理しない。
 7. WHEN ノードを選択中に Delete キーを押すとき、THE MapEditor SHALL そのノードと子孫をすべて削除する（`delete_node` 操作を送信する）。
 8. IF `delete_node` 操作の対象が RootNode であるとき、THEN THE API SHALL 409 `/problems/root-node-immutable` を返す。
 9. IF `create_node` または `update_node` 操作においてテキストが 1,000 字を超えるとき、THEN THE API SHALL 422 `/problems/limit-exceeded` を返す。
@@ -164,11 +167,15 @@
 
 1. THE MapEditor SHALL OperationQueue に積まれたバッチを先頭から1つずつ順に送信する。前のバッチの返事を受け取るまで次のバッチを送信しない。
 2. WHEN バッチ送信が成功（200）するとき、THE MapEditor SHALL レスポンスの `operationsAfter` を受け取り、未送信バッチの操作の下に当て直す（rebase）。
-3. IF バッチ送信が 409（`/problems/sort-key-conflict` を除く）または 5xx で失敗するとき、THEN THE MapEditor SHALL そのバッチ以降のキューをすべてロールバックし、`GET /api/v1/mindmaps/{mapId}` でサーバーの状態を再取得する。
+3. IF バッチ送信が 409（`/problems/sort-key-conflict` を除く）または 422 で拒否されるとき、THEN THE MapEditor SHALL そのバッチ以降のキューをすべてロールバックし、`GET /api/v1/mindmaps/{mapId}` でサーバーの状態を再取得し、拒否の理由を知らせる。
+3a. IF バッチ送信が通信の失敗または 5xx で失敗するとき、THEN THE MapEditor SHALL 画面の状態を戻さず、同じ `batch_id` で間隔を延ばしながら再送する（8.5 の冪等性により二重に適用されない）。再送を続けている間は、保存できていないことを画面に示す。
 4. THE MapEditor SHALL オフライン時に操作をサーバーへ送信しない（通信が切れている間は操作が保存されない。ADR 0016）。
 5. WHEN 同一の `batch_id` のバッチが再送されるとき、THE API SHALL そのバッチを再適用せず、前回の結果を返す（冪等性）。(D-15)
 6. IF 1 バッチの操作数が 1,000 件を超えるとき、THEN THE API SHALL 422 `/problems/batch-too-large` を返す。
 7. THE API SHALL `seq` をマップ内で一意かつ単調増加の整数として採番する。サーバーは `mindmaps` の行を `SELECT FOR UPDATE` でロックしてから `seq` を採番し、`(map_id, seq)` の一意制約で保証する（`docs/requirements/05a-tables.md` の適用の手順）。
+8. WHEN 送信前のバッチの Undo が押されるとき、THE MapEditor SHALL Undo のバッチを OperationQueue の後ろに積み、前のバッチの返事（inversePayload）を受け取ってから送信する。
+9. WHEN 前回のスナップショットから200操作以上、または前回の操作から30分以上空いて操作を適用するとき、THE API SHALL 適用の前の状態を自動のスナップショット（kind = auto）として同じトランザクションで保存する。(D-16)
+10. THE API SHALL スナップショットとそれ以降の操作を順に再生すると、状態テーブル（nodes）と一致する形で操作ログを記録する。(D-02、D-12)
 
 ---
 
@@ -180,7 +187,7 @@
 
 1. THE MapEditor SHALL マップを開いたときおよびブラウザタブがフォアグラウンドに戻ったとき、CatchUpAPI（`GET /api/v1/mindmaps/{mapId}/operations?after={lastAcknowledgedSeq}`）を呼び出す。
 2. THE MapEditor SHALL 30 秒ごとに定期的に CatchUpAPI を呼び出す。
-3. WHEN CatchUpAPI が他ユーザーの操作を返すとき、THE MapEditor SHALL 受け取った操作を TanStack Query のキャッシュに反映する。
+3. WHEN CatchUpAPI が他のタブや利用者の操作を返すとき、THE MapEditor SHALL 受け取った操作を TanStack Query のキャッシュに反映し、未送信の自分の操作をその上に当て直す（8.2 と同じ）。
 4. WHEN 同一のプロパティ（例：ノードのテキスト）を複数の場所から変更したとき、THE System SHALL `seq` の大きいほうの値を残す（項目単位の後勝ち、D-13）。
 
 ---
@@ -250,13 +257,13 @@
 
 *For any* スナップショットとそれ以降の操作列を組み合わせて再生した結果が、現在の `nodes` テーブルの状態と一致する。
 
-**Validates: Requirements 8.5**
+**Validates: Requirements 8.9, 8.10**
 
 **テストツール**：Hypothesis（結合テスト）
 
 ### Property 7：認可
 
-*For any* ユーザーと、そのユーザーが所属しないワークスペースのマップへの操作リクエスト、THE API は RLS により 404 または 409 を返し、データを変更しない。
+*For any* ユーザーと、そのユーザーが所属しないワークスペースのマップへの操作リクエスト、THE API は RLS により 404 を返し、データを変更しない。
 
 **Validates: Requirements 10.1, 10.2**
 

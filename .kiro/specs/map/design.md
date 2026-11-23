@@ -31,9 +31,9 @@ graph TD
 |---|---|---|
 | `domain` | `Mindmap`, `Node`, `NodeLink`, `MapOperation`, `SortKey` | エンティティ、値オブジェクト、ドメインルール（循環検出など） |
 | `ports` | `MapRepository`, `NodeRepository`, `MapOperationRepository`, `MapSnapshotRepository`, `UnitOfWork` | DBアクセスの抽象 |
-| `application` | `CreateMapUseCase`, `ListMapsUseCase`, `GetMapUseCase`, `UpdateMapUseCase`, `DeleteMapUseCase`, `ApplyOperationsUseCase`, `GetOperationsAfterUseCase` | ユースケース。認可・トランザクション境界 |
+| `application` | `CreateMapUseCase`, `ListMapsUseCase`, `GetMapUseCase`, `DeleteMapUseCase`, `ApplyOperationsUseCase`, `GetOperationsAfterUseCase` | ユースケース。認可・トランザクション境界 |
 | `adapters` | `PgMapRepository`, `PgNodeRepository`, `PgMapOperationRepository`, `PgMapSnapshotRepository`, `PgUnitOfWork` | SQLAlchemy による実装 |
-| `api` | `maps_router`, `MapResponse`, `MapCreateRequest`, `MapUpdateRequest`, `OperationBatchRequest`, `OperationBatchResponse` | FastAPI のルーター・Pydantic スキーマ |
+| `api` | `maps_router`, `MapResponse`, `MapCreateRequest`, `OperationBatchRequest`, `OperationBatchResponse` | FastAPI のルーター・Pydantic スキーマ |
 
 #### 主なユースケース一覧
 
@@ -42,12 +42,11 @@ graph TD
 | `CreateMapUseCase` | `CreateMapCommand(actor, title)` | `CreateMapResult(map_id)` |
 | `ListMapsUseCase` | `ListMapsCommand(actor, cursor, limit)` | `ListMapsResult(items, next_cursor)` |
 | `GetMapUseCase` | `GetMapCommand(actor, map_id)` | `GetMapResult(mindmap, nodes, node_links)` |
-| `UpdateMapUseCase` | `UpdateMapCommand(actor, map_id, title)` | `UpdateMapResult(map)` |
 | `DeleteMapUseCase` | `DeleteMapCommand(actor, map_id)` | `DeleteMapResult()` |
 | `ApplyOperationsUseCase` | `ApplyOperationsCommand(actor, map_id, base_seq, operations, batch_id, client_id, origin, intent?)` | `ApplyOperationsResult(seq, operations_after)` |
 | `GetOperationsAfterUseCase` | `GetOperationsAfterCommand(actor, map_id, after_seq)` | `GetOperationsAfterResult(operations)` |
 
-`UpdateMapUseCase` は `title` の変更のみを受け付ける。論理削除は `DeleteMapUseCase` で行い、`mindmaps.deleted_at` を設定する。
+マップの名前の変更は専用のAPIを作らず、`update_map` 操作（`POST /operations`）で行う。操作ログに残り、Undo できるようにするため（D-15）。論理削除は `DeleteMapUseCase`（`DELETE /api/v1/mindmaps/{mapId}`）で行い、`mindmaps.deleted_at` を設定する。
 
 `CreateMapUseCase` は、マップと中心のトピック（root_node）を**同じトランザクション内**で作成する。`mindmaps.root_node_id` → `nodes(map_id, id)` の外部キーは DEFERRABLE INITIALLY DEFERRED として定義し、コミット時に整合性を確認する（`docs/requirements/05a-tables.md` の制約定義に準拠）。
 
@@ -146,14 +145,7 @@ workspace_id = ANY(app_current_workspace_ids())
 workspace_id = ANY(app_current_workspace_ids())
 ```
 
-`app_current_workspace_ids()` の実装：
-
-```sql
--- current_setting の missing_ok=true で未設定時は空文字列を返す
-current_setting('app.workspace_ids', true)::uuid[]
-```
-
-このヘルパー関数はマイグレーションで作成する（ADR 0035 の手順に従う）。
+`app_current_workspace_ids()` は既存のマイグレーション `backend/migrations/versions/0001_app_role.py` で作成済み。`app.workspace_ids` はカンマ区切りの文字列で渡し、関数が `string_to_array(nullif(current_setting('app.workspace_ids', true), ''), ',')::uuid[]` で配列にする（未設定なら空配列で、何も見えない）。新しいテーブル（mindmaps、nodes、map_operations、map_snapshots）は、`0002_workspaces.py` と同じ形のポリシー（USING と WITH CHECK）を付ける。
 
 ### API エンドポイント
 
@@ -164,7 +156,6 @@ current_setting('app.workspace_ids', true)::uuid[]
 | `GET` | `/api/v1/mindmaps` | マップ一覧（カーソルページング） | 200 |
 | `POST` | `/api/v1/mindmaps` | マップ作成（冪等：同 id で再送したら既存を返す） | 201 |
 | `GET` | `/api/v1/mindmaps/{mapId}` | マップ取得（全ノード・つながり線含む） | 200 |
-| `PATCH` | `/api/v1/mindmaps/{mapId}` | マップ更新（title のみ） | 200 |
 | `DELETE` | `/api/v1/mindmaps/{mapId}` | マップの論理削除 | 204 |
 | `POST` | `/api/v1/mindmaps/{mapId}/operations` | 操作のまとまりを適用 | 200 |
 | `GET` | `/api/v1/mindmaps/{mapId}/operations` | `?after={seq}` で指定 seq 以降の操作を取得 | 200 |
@@ -557,7 +548,7 @@ sequenceDiagram
 
 スナップショット + それ以降の操作を再生した結果が現在の `nodes` と一致する（Hypothesis、結合テスト）。
 
-**Validates: Requirements 8.5**
+**Validates: Requirements 8.9, 8.10**
 
 **テストツール**：Hypothesis（結合テスト）
 
